@@ -1,4 +1,4 @@
-__author__ = 'https://github.com/xenDE/pwnagotchi-plugin-webgpsmap'
+__author__ = 'https://github.com/xenDE/pwnagotchi-plugin-webgpsmap and https://github.com/dadav'
 __version__ = '1.0.0-alpha'
 __name__ = 'webgpsmap'
 __license__ = 'GPL3'
