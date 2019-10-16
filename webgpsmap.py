@@ -336,7 +336,7 @@ def get_html():
       }}
       new_marker_pos = [positions[key].lat, positions[key].lng]
       newMarker = L.marker(new_marker_pos, {{ icon: myIcon }}).addTo(mymap);
-      newMarker.bindPopup("<b>"+positions[key].ssid+"</b><br>MAC: "+positions[key].mac+"<br/>"+"position type:"+positions[key].type+"<br/>"+"position accuracy:"+positions[key].acc, { maxWidth: "auto"; });
+      newMarker.bindPopup("<b>"+positions[key].ssid+"</b><br>MAC: "+positions[key].mac+"<br/>"+"position type:"+positions[key].type+"<br/>"+"position accuracy:"+positions[key].acc, {{ maxWidth: "auto" }});
       markers.push(newMarker);
       marker_pos.push(new_marker_pos);
       }}
