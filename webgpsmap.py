@@ -214,10 +214,12 @@ def get_html():
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.5.1/dist/leaflet.css"
   integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
   crossorigin=""/>
+  <link rel="stylesheet" type="text/css" href="http://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.css" />
+  <link rel="stylesheet" type="text/css" href="http://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.css" />
   <script src="https://unpkg.com/leaflet@1.5.1/dist/leaflet.js"
   integrity="sha512-GffPMF3RvMeYyc1LWMHtK8EbPv0iNZ8/oTtHPx9/cc2ILxQ+u905qIwdpULaqDkyBKgOaB57QTMg7ztg8Jm2Og=="
   crossorigin=""></script>
-
+  <script type='text/javascript' src='http://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.js'></script>
   <style type="text/css">
     html, body, #mapdiv {{   height: 100%; width: 100%; margin:0; }}
     .pwnAPPin path {{
@@ -314,10 +316,10 @@ def get_html():
         popupAnchor : [0, -30],
       }});
 
-
     var accuracys = [];
     var markers = [];
     var marker_pos = [];
+    var markerClusters = L.markerClusterGroup();
 
     Object.keys(positions).forEach(function(key) {{
       if(positions[key].lng){{
@@ -335,13 +337,15 @@ def get_html():
         );
       }}
       new_marker_pos = [positions[key].lat, positions[key].lng]
-      newMarker = L.marker(new_marker_pos, {{ icon: myIcon }}).addTo(mymap);
+      newMarker = L.marker(new_marker_pos, {{ icon: myIcon }}); //.addTo(mymap);
       newMarker.bindPopup("<b>"+positions[key].ssid+"</b><br>MAC: "+positions[key].mac+"<br/>"+"position type:"+positions[key].type+"<br/>"+"position accuracy:"+positions[key].acc, {{ maxWidth: "auto" }});
       markers.push(newMarker);
       marker_pos.push(new_marker_pos);
+      markerClusters.addLayer( newMarker );
       }}
     }});
 
+    mymap.addLayer( markerClusters );
     var bounds = new L.LatLngBounds(marker_pos);
     mymap.fitBounds(bounds);
 
