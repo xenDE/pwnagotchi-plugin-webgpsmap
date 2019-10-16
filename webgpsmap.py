@@ -15,6 +15,7 @@ __help__ = """
 import logging
 import os
 import json
+import re
 
 
 OPTIONS = dict()
@@ -50,14 +51,7 @@ def on_webhook(response, path):
         response.send_response(500)
         return
 
-    try:
-        res = get_html()
-    except json.JSONDecodeError as js_e:
-        response.send_response(500)
-        return
-    except OSError as os_e:
-        response.send_response(500)
-        return
+    res = get_html()
 
     response.send_response(200)
     response.send_header('Content-type', 'text/html')
@@ -73,16 +67,39 @@ class PositionFile:
     Wraps gps / net-pos files
     """
     GPS = 0
-    NETPOS = 1
-    GEO = 2
+    GEO = 1
 
     def __init__(self, path):
         self._file = path
+        self._filename = os.path.basename(path)
+
         try:
             with open(path, 'r') as json_file:
                 self._json = json.load(json_file)
         except json.JSONDecodeError as js_e:
             raise js_e
+
+    def mac(self):
+        """
+        Returns the mac from filename
+        """
+        parsed_mac = re.search(r'.*_?([a-zA-Z0-9]{12})\.(?:gps|geo)\.json', self._filename)
+        if parsed_mac:
+            mac = parsed_mac.groups()[0]
+            mac_it = iter(mac)
+            mac = ':'.join([a + b for a, b in zip(mac_it, mac_it)])
+            return mac
+        return None
+
+    def ssid(self):
+        """
+        Returns the ssid from filename
+        """
+        parsed_ssid = re.search(r'(.+)_[a-zA-Z0-9]{12}\.(?:gps|geo)\.json', self._filename)
+        if parsed_ssid:
+            return parsed_ssid.groups()[0]
+        return None
+
 
     def json(self):
         """
@@ -96,8 +113,6 @@ class PositionFile:
         """
         if self._file.endswith('.gps.json'):
             return PositionFile.GPS
-        if self._file.endswith('.net-pos.json'):
-            return PositionFile.NETPOS
         if self._file.endswith('.geo.json'):
             return PositionFile.GEO
         return None
@@ -105,9 +120,12 @@ class PositionFile:
     def lat(self):
         try:
             if self.type() == PositionFile.GPS:
-                return self._json['Latitude']
-            if self.type() == PositionFile.NETPOS or self.type() == PositionFile.GEO:
-                return self._json['location']['lat']
+                lat = self._json['Latitude']
+            if self.type() == PositionFile.GEO:
+                lat = self._json['location']['lat']
+            if lat > 0:
+                return lat
+            raise ValueError("Lat is 0")
         except KeyError:
             pass
         return None
@@ -115,9 +133,12 @@ class PositionFile:
     def lng(self):
         try:
             if self.type() == PositionFile.GPS:
-                return self._json['Longitude']
-            if self.type() == PositionFile.NETPOS or self.type() == PositionFile.GEO:
-                return self._json['location']['lng']
+                lng = self._json['Longitude']
+            if self.type() == PositionFile.GEO:
+                lng = self._json['location']['lng']
+            if lng > 0:
+                return lng
+            raise ValueError("Lng is 0")
         except KeyError:
             pass
         return None
@@ -125,7 +146,7 @@ class PositionFile:
     def accuracy(self):
         if self.type() == PositionFile.GPS:
             return 50.0
-        if self.type() == PositionFile.NETPOS or self.type() == PositionFile.GEO:
+        if self.type() == PositionFile.GEO:
             try:
                 return self._json['accuracy']
             except KeyError:
@@ -149,10 +170,15 @@ def get_gps_data():
     for pos_file in all_geo_or_gps_files:
         try:
             pos = PositionFile(pos_file)
-            pos_file_basename = os.path.basename(pos_file)
-            if '_' not in pos_file_basename:
-                pos_file_basename = "unknown_"+pos_file_basename
-            ssid, mac = pos_file_basename.split('.', 2)[0].split('_', 1)
+            if not pos.type() == PositionFile.GPS and not pos.type() == PositionFile.GEO:
+                continue
+
+            ssid, mac = pos.ssid(), pos.mac()
+            ssid = "unknown" if not ssid else ssid
+            # invalid mac is strange and should abort; ssid is ok
+            if not mac:
+                raise ValueError('Mac cant be parsed from filename')
+
             gps_data[ssid+"_"+mac] = {
                 'ssid': ssid,
                 'mac': mac,
@@ -162,9 +188,14 @@ def get_gps_data():
                 'acc': pos.accuracy(),
                 }
         except json.JSONDecodeError as js_e:
-            raise js_e
+            logging.error(js_e)
+            continue
+        except ValueError as v_e:
+            logging.error(v_e)
+            continue
         except OSError as os_e:
-            raise os_e
+            logging.error(os_e)
+            continue
     logging.debug("plugin webgpsmap loaded %d positions: ", len(gps_data))
 
     return gps_data
@@ -278,7 +309,7 @@ def get_html():
       className: "leaflet-data-marker",
         html: svg.replace('#','%23'),
 
-        iconAnchor  : [22, 28],
+        iconAnchor  : [40, 30],
         iconSize    : [80, 60],
         popupAnchor : [0, -30],
       }});
@@ -305,7 +336,7 @@ def get_html():
       }}
       new_marker_pos = [positions[key].lat, positions[key].lng]
       newMarker = L.marker(new_marker_pos, {{ icon: myIcon }}).addTo(mymap);
-      newMarker.bindPopup("<b>"+positions[key].ssid+"</b><br>MAC: "+positions[key].mac+"<br/>"+"position type:"+positions[key].type+"<br/>"+"position accuracy:"+positions[key].acc);
+      newMarker.bindPopup("<b>"+positions[key].ssid+"</b><br>MAC: "+positions[key].mac+"<br/>"+"position type:"+positions[key].type+"<br/>"+"position accuracy:"+positions[key].acc, { maxWidth: "auto"; });
       markers.push(newMarker);
       marker_pos.push(new_marker_pos);
       }}
