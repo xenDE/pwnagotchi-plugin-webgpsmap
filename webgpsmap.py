@@ -16,10 +16,13 @@ import logging
 import os
 import json
 import re
+from functools import lru_cache
 
 
 OPTIONS = dict()
 AGENT = None
+ALREADY_SENT = list()
+SKIP = list()
 
 
 def on_loaded():
@@ -47,28 +50,49 @@ def on_webhook(response, path):
     """
     Returns a map with gps data
     """
+    global ALREADY_SENT
+
     if not AGENT:
         response.send_response(500)
+        response.send_header('Content-type', 'text/html')
+        response.end_headers()
+        try:
+            response.wfile.write(bytes('''<html>
+                <head>
+                <meta charset="utf-8">
+                <style>body{font-size:1000%;}</style>
+                </head>
+                <body>Not ready yet</body>
+                </html>''', "utf-8"))
+        except Exception as ex:
+            logging.error(ex)
         return
 
-    if path == '/' or path == '' :
-        // returns the html template
+    if path == '/' or not path:
+        # returns the html template
+        ALREADY_SENT = list()
         res = get_html()
         response.send_response(200)
         response.send_header('Content-type', 'text/html')
-    elif path == '/get-all.json':
-        // returns all positions
-        res = json.dumps(get_gps_data())
+    elif path.startswith('/all'):
+        # returns all positions
+        ALREADY_SENT = list()
+        res = json.dumps(load_gps_from_dir(AGENT.config()['bettercap']['handshakes']))
         response.send_response(200)
         response.send_header('Content-type', 'application/json')
-    elif path.startswith( '/get-newer.json/' ):
-        // returns all positions newer then timestamp
-        timestamp = path.replace('/get-newer.json/', '')
-        res = '{}'  // 2do: return all positions newer then timestam
+    elif path.startswith('/newest'):
+        # returns all positions newer then timestamp
+        res = json.dumps(load_gps_from_dir(AGENT.config()['bettercap']['handshakes']), newest_only=True)
         response.send_response(200)
         response.send_header('Content-type', 'application/json')
     else:
-        res = '<html><head><meta charset="utf-8"><style>body{font-size:1000%;}</style></head><body>4😋4</body></html>'
+        res = '''<html>
+        <head>
+        <meta charset="utf-8">
+        <style>body{font-size:1000%;}</style>
+        </head>
+        <body>4😋4</body>
+        </html>'''
         response.send_response(404)
 
     response.end_headers()
@@ -170,23 +194,38 @@ class PositionFile:
                 pass
         return None
 
-def get_gps_data():
+# cache 1024 items
+@lru_cache(maxsize=1024, typed=False)
+def _get_pos_from_file(path):
+    return PositionFile(path)
+
+
+def load_gps_from_dir(gpsdir, newest_only=False):
     """
     Parses the gps-data from disk
     """
-    config = AGENT.config()
-    handshake_dir = config['bettercap']['handshakes']
+    global ALREADY_SENT
+    global SKIP
+
+    handshake_dir = gpsdir
     gps_data = dict()
     all_files = os.listdir(handshake_dir)
     all_geo_or_gps_files = [os.path.join(handshake_dir, filename)
                             for filename in all_files
                             if filename.endswith('.json')
                             ]
+
+    all_geo_or_gps_files = set(all_geo_or_gps_files) - set(SKIP)
+
+    if newest_only:
+        all_geo_or_gps_files = set(all_geo_or_gps_files) - set(ALREADY_SENT)
+
     logging.info("webgpsmap: Found %d .json files. Fetching positions ...",
                  len(all_geo_or_gps_files))
+
     for pos_file in all_geo_or_gps_files:
         try:
-            pos = PositionFile(pos_file)
+            pos = _get_pos_from_file(pos_file)
             if not pos.type() == PositionFile.GPS and not pos.type() == PositionFile.GEO:
                 continue
 
@@ -204,13 +243,17 @@ def get_gps_data():
                 'lat': pos.lat(),
                 'acc': pos.accuracy(),
                 }
+            ALREADY_SENT += pos_file
         except json.JSONDecodeError as js_e:
+            SKIP += pos_file
             logging.error(js_e)
             continue
         except ValueError as v_e:
+            SKIP += pos_file
             logging.error(v_e)
             continue
         except OSError as os_e:
+            SKIP += pos_file
             logging.error(os_e)
             continue
     logging.debug("plugin webgpsmap loaded %d positions: ", len(gps_data))
