@@ -1,0 +1,3 @@
+# no hidden files
+.*
+!.gitignore
