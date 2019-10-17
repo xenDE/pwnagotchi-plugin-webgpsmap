@@ -12,10 +12,12 @@
   crossorigin=""></script>
   <script type='text/javascript' src='http://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.js'></script>
   <style type="text/css">
+    /* for map */
     html, body, #mapdiv {   height: 100%; width: 100%; margin:0; }
     .pwnAPPin path {
       fill: #ce7575;
     }
+    /* animated ap marker */
     .pwnAPPin .ring_outer {
       animation: opacityPulse 2s cubic-bezier(1, 0.14, 1, 1);
       animation-iteration-count: infinite;
@@ -64,33 +66,57 @@
       animation-duration: 2s;
       animation-fill-mode: both;
     }
+    /* animated radar */
+    .radar {
+    animation: pulsate 1s ease-out;
+    -webkit-animation: pulsate 1s ease-out;
+    -webkit-animation-iteration-count: infinite; 
+    /* opacity: 0.0 */
+    }
+    #loading {
+      top: 50%;
+      left: 50%;
+      width: auto;
+      height:auto;
+      position: fixed;
+      margin-left:-70px;
+      margin-top:-50px;  
+
+      border: 10px #ff0000 solid;
+      border-radius: 20px;
+      padding:50px;
+      display: none;
+    }
   </style>
 </head>
 <body>
   <div id="mapdiv"></div>
-  <script>
-    positions = ###GPSDATAJSON###;
+  <div id="loading">loading positions...</div>
+  <script type="text/javascript">
 
-    // select your theme from https://leaflet-extras.github.io/leaflet-providers/preview/
+    function loadJSON(url, callback) {
+      document.getElementById("loading").style.display = "flex"; 
+      var xobj = new XMLHttpRequest();
+          xobj.overrideMimeType("application/json");
+      xobj.open('GET', url, true);
+      xobj.onreadystatechange = function () {
+            if (xobj.readyState == 4 && xobj.status == "200") {
+              callback(xobj.responseText);
+            }
+      };
+      xobj.send(null);  
+    }
+
+    // select your map theme from https://leaflet-extras.github.io/leaflet-providers/preview/
     var Esri_WorldImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
     });
-    // var OpenStreetMap_Mapnik = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      //   maxZoom: 19,
-    //   opacity:0.5,
-      //   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    // });
     var CartoDB_DarkMatter = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: 'abcd',
       opacity:0.8,
       maxZoom: 19
     });
-    // var Thunderforest_SpinalMap = L.tileLayer('https://{s}.tile.thunderforest.com/spinal-map/{z}/{x}/{y}.png?apikey={apikey}', {
-    //   attribution: '&copy; <a href="http://www.thunderforest.com/">Thunderforest</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    //   apikey: '<your apikey>',
-    //   maxZoom: 22
-    // });
     var mymap = L.map('mapdiv');
     Esri_WorldImagery.addTo(mymap);
     CartoDB_DarkMatter.addTo(mymap);
@@ -112,33 +138,38 @@
     var marker_pos = [];
     var markerClusters = L.markerClusterGroup();
 
-    Object.keys(positions).forEach(function(key) {
-      if(positions[key].lng){
-        if (positions[key].acc) {
-        // draw a circle
-        accuracys.push(
-          L.circle([positions[key].lat, positions[key].lng], {
-            color: 'red',
-            fillColor: '#f03',
-            fillOpacity: 0.15,
-            weight: 1,
-            opacity: 0.15,
-            radius: Math.min(positions[key].acc, 100)
-          }).addTo(mymap)
-        );
-      }
-      new_marker_pos = [positions[key].lat, positions[key].lng]
-      newMarker = L.marker(new_marker_pos, { icon: myIcon }); //.addTo(mymap);
-      newMarker.bindPopup("<b>"+positions[key].ssid+"</b><br>MAC: "+positions[key].mac+"<br/>"+"position type:"+positions[key].type+"<br/>"+"position accuracy:"+positions[key].acc, { maxWidth: "auto" });
-      markers.push(newMarker);
-      marker_pos.push(new_marker_pos);
-      markerClusters.addLayer( newMarker );
-      }
-    });
 
-    mymap.addLayer( markerClusters );
-    var bounds = new L.LatLngBounds(marker_pos);
-    mymap.fitBounds(bounds);
+    loadJSON("get-all.json", function(response) {
+      var positions = JSON.parse(response);
+      Object.keys(positions).forEach(function(key) {
+        if(positions[key].lng){
+          new_marker_pos = [positions[key].lat, positions[key].lng];
+          if (positions[key].acc) {
+            radius = Math.round(Math.min(positions[key].acc, 500));
+            accuracys.push(
+              L.circle(new_marker_pos, {
+                color: 'red',
+                fillColor: '#f03',
+                fillOpacity: 0.15,
+                weight: 1,
+                opacity: 0.15,
+                radius: Math.min(positions[key].acc, 500),
+              }).setStyle({'className': 'radar'}).addTo(mymap)
+            );
+          }
+          newMarker = L.marker(new_marker_pos, { icon: myIcon }); //.addTo(mymap);
+          newMarker.bindPopup("<b>"+positions[key].ssid+"</b><br>MAC: "+positions[key].mac+"<br/>"+"position type:"+positions[key].type+"<br/>"+"position accuracy:"+positions[key].acc, { maxWidth: "auto" });
+          markers.push(newMarker);
+          marker_pos.push(new_marker_pos);
+          markerClusters.addLayer( newMarker );
+        }
+      });
+
+      mymap.addLayer( markerClusters );
+      var bounds = new L.LatLngBounds(marker_pos);
+      mymap.fitBounds(bounds);
+      document.getElementById("loading").style.display = "none"; 
+    });
 
   </script>
 </body></html>

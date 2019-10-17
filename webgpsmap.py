@@ -51,11 +51,20 @@ def on_webhook(response, path):
         response.send_response(500)
         return
 
-    res = get_html()
+    if path == '/' or path == '' :
+        res = get_html()
+        response.send_response(200)
+        response.send_header('Content-type', 'text/html')
+    elif path == '/get-all.json':
+        res = json.dumps(get_gps_data())
+        response.send_response(200)
+        response.send_header('Content-type', 'application/json')
+    else:
+        res = '<html><head><meta charset="utf-8"><style>body{font-size:1000%;}</style></head><body>4😋4</body></html>'
+        response.send_response(404)
 
-    response.send_response(200)
-    response.send_header('Content-type', 'text/html')
     response.end_headers()
+
     try:
         response.wfile.write(bytes(res, "utf-8"))
     except Exception as ex:
@@ -205,6 +214,5 @@ def get_html():
     """
     Returns the html page
     """
-    gps_data = json.dumps(get_gps_data())
-    html_data = open(os.path.dirname(os.path.realpath(__file__))+"/"+"webgpsmap.html", "r").read().replace("###GPSDATAJSON###", gps_data)
+    html_data = open(os.path.dirname(os.path.realpath(__file__))+"/"+"webgpsmap.html", "r").read()
     return html_data
