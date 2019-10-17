@@ -52,11 +52,19 @@ def on_webhook(response, path):
         return
 
     if path == '/' or path == '' :
+        // returns the html template
         res = get_html()
         response.send_response(200)
         response.send_header('Content-type', 'text/html')
     elif path == '/get-all.json':
+        // returns all positions
         res = json.dumps(get_gps_data())
+        response.send_response(200)
+        response.send_header('Content-type', 'application/json')
+    elif path.startswith( '/get-newer.json/' ):
+        // returns all positions newer then timestamp
+        timestamp = path.replace('/get-newer.json/', '')
+        res = '{}'  // 2do: return all positions newer then timestam
         response.send_response(200)
         response.send_header('Content-type', 'application/json')
     else:
