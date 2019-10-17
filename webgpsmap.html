@@ -70,7 +70,7 @@
     .radar {
     animation: pulsate 1s ease-out;
     -webkit-animation: pulsate 1s ease-out;
-    -webkit-animation-iteration-count: infinite; 
+    -webkit-animation-iteration-count: infinite;
     /* opacity: 0.0 */
     }
     #loading {
@@ -80,7 +80,7 @@
       height:auto;
       position: fixed;
       margin-left:-70px;
-      margin-top:-50px;  
+      margin-top:-50px;
 
       background-color:rgba(0, 0, 0, 0.5);
       border: 10px #ff0000 solid;
@@ -97,7 +97,7 @@
   <script type="text/javascript">
 
     function loadJSON(url, callback) {
-      document.getElementById("loading").style.display = "flex"; 
+      document.getElementById("loading").style.display = "flex";
       var xobj = new XMLHttpRequest();
           xobj.overrideMimeType("application/json");
       xobj.open('GET', url, true);
@@ -106,7 +106,7 @@
               callback(xobj.responseText);
             }
       };
-      xobj.send(null);  
+      xobj.send(null);
     }
     function escapeHtml(unsafe) {
       return String(unsafe)
@@ -149,7 +149,7 @@
     var markerClusters = L.markerClusterGroup();
 
 
-    loadJSON("get-all.json", function(response) {
+    loadJSON("all", function(response) {
       var positions = JSON.parse(response);
       Object.keys(positions).forEach(function(key) {
         if(positions[key].lng){
@@ -178,7 +178,7 @@
       mymap.addLayer( markerClusters );
       var bounds = new L.LatLngBounds(marker_pos);
       mymap.fitBounds(bounds);
-      document.getElementById("loading").style.display = "none"; 
+      document.getElementById("loading").style.display = "none";
     });
 
   </script>
