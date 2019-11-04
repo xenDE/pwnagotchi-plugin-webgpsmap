@@ -12,10 +12,21 @@ __help__ = """
 ⋅⋅⋅        dir-handshakes: /special/dir/for/handshake/data/
 """
 
+
+'''
+2do:
+ - check gps timestamps
+ - check net-pos timestamps
+ 
+ 
+'''
+
+
 import logging
 import os
 import json
 import re
+import datetime
 from functools import lru_cache
 
 
@@ -113,7 +124,6 @@ class PositionFile:
     def __init__(self, path):
         self._file = path
         self._filename = os.path.basename(path)
-
         try:
             with open(path, 'r') as json_file:
                 self._json = json.load(json_file)
@@ -127,8 +137,9 @@ class PositionFile:
         parsed_mac = re.search(r'.*_?([a-zA-Z0-9]{12})\.(?:gps|geo)\.json', self._filename)
         if parsed_mac:
             mac = parsed_mac.groups()[0]
-            mac_it = iter(mac)
-            mac = ':'.join([a + b for a, b in zip(mac_it, mac_it)])
+            #mac_it = iter(mac)
+            #mac = ':'.join([a + b for a, b in zip(mac_it, mac_it)])
+            # do not make the data bigger
             return mac
         return None
 
@@ -147,6 +158,57 @@ class PositionFile:
         returns the parsed json
         """
         return self._json
+
+    def timestamp_first(self):
+        """
+        returns the timestamp of AP first seen
+        """
+        # use file timestamp creation time of the pcap file
+        return int("%.0f" % os.path.getctime(self._file))
+
+    def timestamp_last(self):
+        """
+        returns the timestamp of AP last seen
+        """
+        return_ts = None
+        if 'ts' in self._json:
+            return_ts = self._json['ts']
+        elif 'Updated' in self._json:
+            # convert gps datetime to unix timestamp: "2019-10-05T23:12:40.422996+01:00"
+            date_iso_formated = self._json['Updated']
+            # fill milliseconds to 6 numbers
+            part1, part2, part3 = re.split('\.|\+', date_iso_formated)
+            part2 = part2.ljust(6, '0')
+            date_iso_formated = part1 + "." + part2 + "+" + part3
+            dateObj = datetime.datetime.fromisoformat(date_iso_formated)
+            return_ts = int("%.0f" % dateObj.timestamp())
+#            print(" ##### time from gps: Updated: " + self._filename)
+        else:
+            # use file timestamp last modification of the pcap file
+            return_ts = int("%.0f" % os.path.getmtime(self._file))
+        return return_ts
+
+    def password(self):
+        """
+        returns the password from file.pcap.cracked od None
+        """
+        return_pass = None
+        password_file_path = self._file[:-9] + ".pcap.cracked"
+#        logging.info("password file: " + password_file_path)
+        if os.path.isfile(password_file_path):
+#            logging.info("-password file exist: " + password_file_path)
+            try:
+                password_file = open(password_file_path, 'r')
+                return_pass = password_file.read()
+                password_file.close()
+#                logging.info("--password: " + return_pass)
+            except OSError as err:
+                print("OS error: {0}".format(err))
+            except:
+                print("Unexpected error:", sys.exc_info()[0])
+                raise
+        return return_pass
+
 
     def type(self):
         """
@@ -209,19 +271,43 @@ def load_gps_from_dir(gpsdir, newest_only=False):
 
     handshake_dir = gpsdir
     gps_data = dict()
-    all_files = os.listdir(handshake_dir)
-    all_geo_or_gps_files = [os.path.join(handshake_dir, filename)
-                            for filename in all_files
-                            if filename.endswith('.json')
-                            ]
 
-    all_geo_or_gps_files = set(all_geo_or_gps_files) - set(SKIP)
+    logging.info("webmap: scanning %s" % handshake_dir)
+
+
+    all_files = os.listdir(handshake_dir)
+    #print(all_files)
+    all_pcap_files = [os.path.join(handshake_dir, filename)
+                            for filename in all_files
+                            if filename.endswith('.pcap')
+                            ]
+    all_geo_or_gps_files = []
+    for filename_pcap in all_pcap_files:
+        filename_base = filename_pcap[:-5]  # remove ".pcap"
+#        logging.info("webmap: found: " + filename_base)
+        filename_position = None
+
+        check_for = os.path.basename(filename_base) + ".gps.json"
+        if check_for in all_files:
+            filename_position = str(os.path.join(handshake_dir, check_for))
+
+        check_for = os.path.basename(filename_base) + ".geo.json"
+        if check_for in all_files:
+            filename_position = str(os.path.join(handshake_dir, check_for))
+
+        if filename_position is not None:
+#            logging.info("webmap: -- found: %s %d" % (check_for, len(all_geo_or_gps_files)) )
+            all_geo_or_gps_files.append(filename_position)
+
+
+
+#    all_geo_or_gps_files = set(all_geo_or_gps_files) - set(SKIP)   # remove skiped networks?
 
     if newest_only:
         all_geo_or_gps_files = set(all_geo_or_gps_files) - set(ALREADY_SENT)
 
-    logging.info("webgpsmap: Found %d .json files. Fetching positions ...",
-                 len(all_geo_or_gps_files))
+    logging.info("webgpsmap: Found %d .json files from %d handshakes. Fetching positions ...",
+                 len(all_geo_or_gps_files), len(all_pcap_files))
 
     for pos_file in all_geo_or_gps_files:
         try:
@@ -234,7 +320,6 @@ def load_gps_from_dir(gpsdir, newest_only=False):
             # invalid mac is strange and should abort; ssid is ok
             if not mac:
                 raise ValueError('Mac cant be parsed from filename')
-
             gps_data[ssid+"_"+mac] = {
                 'ssid': ssid,
                 'mac': mac,
@@ -242,7 +327,16 @@ def load_gps_from_dir(gpsdir, newest_only=False):
                 'lng': pos.lng(),
                 'lat': pos.lat(),
                 'acc': pos.accuracy(),
+                'ts_first': pos.timestamp_first(),
+                'ts_last': pos.timestamp_last(),
                 }
+
+            check_for = os.path.basename(pos_file[:-9]) + ".pcap.cracked"
+#            print("check: ", check_for)
+            if check_for in all_files:
+                gps_data[ssid + "_" + mac]["pass"] = pos.password()
+#                print("data with pass: ", gps_data[ssid + "_" + mac])
+
             ALREADY_SENT += pos_file
         except json.JSONDecodeError as js_e:
             SKIP += pos_file
@@ -256,7 +350,7 @@ def load_gps_from_dir(gpsdir, newest_only=False):
             SKIP += pos_file
             logging.error(os_e)
             continue
-    logging.debug("plugin webgpsmap loaded %d positions: ", len(gps_data))
+    logging.info("plugin webgpsmap loaded %d positions: ", len(gps_data))
 
     return gps_data
 
