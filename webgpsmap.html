@@ -1,15 +1,11 @@
 <html>
 <head>
   <meta http-equiv="Content-Type" content="text/xml; charset=utf-8" />
-  <title>WEB GPS MAP</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.5.1/dist/leaflet.css"
-  integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
-  crossorigin=""/>
+  <title>GPS MAP</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.5.1/dist/leaflet.css"/>
   <link rel="stylesheet" type="text/css" href="http://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.css" />
   <link rel="stylesheet" type="text/css" href="http://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/MarkerCluster.Default.css" />
-  <script src="https://unpkg.com/leaflet@1.5.1/dist/leaflet.js"
-  integrity="sha512-GffPMF3RvMeYyc1LWMHtK8EbPv0iNZ8/oTtHPx9/cc2ILxQ+u905qIwdpULaqDkyBKgOaB57QTMg7ztg8Jm2Og=="
-  crossorigin=""></script>
+  <script type='text/javascript' src="https://unpkg.com/leaflet@1.5.1/dist/leaflet.js"></script>
   <script type='text/javascript' src='http://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.4.1/leaflet.markercluster.js'></script>
   <style type="text/css">
     /* for map */
@@ -89,27 +85,28 @@
       display: none;
     }
     #loading .face { font-size:8vw; }
+    #loading .text {position:absolute;bottom:0;text-align:center; font-size: 1vw;color:#a0a0a0;}
   </style>
 </head>
 <body>
   <div id="mapdiv"></div>
-  <div id="loading"><div class="face"><nobr>(⌐■&nbsp;<span id="loading_ap_img"></span>&nbsp;■)</nobr></div></div>
+  <div id="loading"><div class="face"><nobr>(⌐■&nbsp;<span id="loading_ap_img"></span>&nbsp;■)</nobr></div><div class="text">loading positions...</div></div>
   <script type="text/javascript">
-
     function loadJSON(url, callback) {
       document.getElementById("loading").style.display = "flex";
       var xobj = new XMLHttpRequest();
-          xobj.overrideMimeType("application/json");
+      xobj.overrideMimeType("application/json");
       xobj.open('GET', url, true);
       xobj.onreadystatechange = function () {
-            if (xobj.readyState == 4 && xobj.status == "200") {
-              callback(xobj.responseText);
-            }
+        if (xobj.readyState == 4 && xobj.status == "200") {
+          callback(xobj.responseText);
+        }
       };
       xobj.send(null);
     }
     function escapeHtml(unsafe) {
-      return String(unsafe)
+      return
+        String(unsafe)
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
@@ -129,6 +126,7 @@
     }
 
     // select your map theme from https://leaflet-extras.github.io/leaflet-providers/preview/
+    // use 2 layers with alpha for a nice dark style
     var Esri_WorldImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
     });
@@ -148,7 +146,6 @@
     var myIcon = L.divIcon({
       className: "leaflet-data-marker",
       html: svg.replace('#','%23'),
-
       iconAnchor  : [40, 30],
       iconSize    : [80, 60],
       popupAnchor : [0, -30],
@@ -156,7 +153,6 @@
     var myIconOpen = L.divIcon({
       className: "leaflet-data-marker",
       html: svgOpen.replace('#','%23'),
-
       iconAnchor  : [40, 30],
       iconSize    : [80, 60],
       popupAnchor : [0, -30],
@@ -167,7 +163,6 @@
     var marker_pos = [];
     var markerClusters = L.markerClusterGroup();
 
-
     loadJSON("all", function(response) {
       var positions = JSON.parse(response);
       Object.keys(positions).forEach(function(key) {
@@ -177,7 +172,7 @@
             radius = Math.round(Math.min(positions[key].acc, 500));
             markerColor = 'red';
             markerColorCode = '#f03';
-            fillOpacity = 0.01;
+            fillOpacity = 0.002;
             if (positions[key].pass) {
               markerColor = 'green';
               markerColorCode = '#1aff00';
@@ -194,7 +189,6 @@
               }).setStyle({'className': 'radar'}).addTo(mymap)
             );
           }
-
           if (positions[key].pass) {
             newMarker = L.marker(new_marker_pos, { icon: myIconOpen, title: positions[key].ssid }); //.addTo(mymap);
           } else {
@@ -210,12 +204,10 @@
           markerClusters.addLayer( newMarker );
         }
       });
-
       mymap.addLayer( markerClusters );
       var bounds = new L.LatLngBounds(marker_pos);
       mymap.fitBounds(bounds);
       document.getElementById("loading").style.display = "none";
     });
-
   </script>
 </body></html>
