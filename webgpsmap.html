@@ -162,7 +162,7 @@
     var marker_pos = [];
     var markerClusters = L.markerClusterGroup();
 
-    loadJSON("all", function(response) {
+    loadJSON("/plugins/webgpsmap/all", function(response) {
       var positions = JSON.parse(response);
       Object.keys(positions).forEach(function(key) {
         if(positions[key].lng){
