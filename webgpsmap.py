@@ -1,117 +1,237 @@
-__author__ = 'https://github.com/xenDE/pwnagotchi-plugin-webgpsmap and https://github.com/dadav'
-__version__ = '1.0.0-alpha'
-__name__ = 'webgpsmap'
-__license__ = 'GPL3'
-__description__ = 'a plugin for pwnagotchi that shows a openstreetmap with positions of ap-handshakes in the webbrowser'
-__help__ = """
--install: copy "webgpsmap.py" to your configured "custom_plugins" directory and add+edit webgpsmap config to /etc/pnagotchi/config.yml:
-⋅⋅⋅    custom_plugins: /usr/local/pwnagotchi/plugins
-⋅⋅⋅    plugins:
-⋅⋅⋅      webgpsmap:
-⋅⋅⋅        enabled: true
-⋅⋅⋅        dir-handshakes: /special/dir/for/handshake/data/
-"""
-
-
-'''
-2do:
- - check gps timestamps
- - check net-pos timestamps
- 
- 
-'''
-
-
+import pwnagotchi.plugins as plugins
 import logging
 import os
 import json
 import re
 import datetime
+from flask import Response
 from functools import lru_cache
 
+'''
+2do:
+    - make the cache handling multiple clients
+    - cleanup the javascript in a class and handle "/newest" additions
+    - create map filters (only cracked APs, only last xx days, between 2 days with slider)
+        http://www.gistechsolutions.com/leaflet/DEMO/filter/filter.html
+        https://gis.stackexchange.com/questions/312737/filtering-interactive-leaflet-map-with-dropdown-menu
+        https://blogs.kent.ac.uk/websolutions/2015/01/29/filtering-map-markers-with-leaflet-js-a-brief-technical-overview/
+        http://www.digital-geography.com/filter-leaflet-maps-slider/
+        http://bl.ocks.org/zross/47760925fcb1643b4225
+    - 
+'''
 
-OPTIONS = dict()
-AGENT = None
-ALREADY_SENT = list()
-SKIP = list()
+class Webgpsmap(plugins.Plugin):
+    __author__ = 'https://github.com/xenDE/pwnagotchi-plugin-webgpsmap and https://github.com/dadav'
+    __version__ = '1.2.2-beta'
+    __name__ = 'webgpsmap'
+    __license__ = 'GPL3'
+    __description__ = 'a plugin for pwnagotchi that shows a openstreetmap with positions of ap-handshakes in your webbrowser'
+    __help__ = """
+- install: copy "webgpsmap.py" and "webgpsmap.html" to your configured "custom_plugins" directory
+- add webgpsmap.yml to your config
+- connect your PC/Smartphone/* with USB, BT or other to your pwnagotchi and browse to http://pwnagotchi.local:8080/plugins/webgpsmap/
+  (change pwnagotchi.local to your pwnagotchis IP, if needed)
+"""
 
+    ALREADY_SENT = list()
+    SKIP = list()
 
-def on_loaded():
-    """
-    Plugin got loaded
-    """
-    logging.info("webgpsmap plugin loaded")
+    def __init__(self):
+        self.ready = False
 
-def on_ready(agent):
-    """
-    Save the agent obj
-    """
-    global AGENT
-    AGENT = agent
+    def on_ready(self, agent):
+        self.config = agent.config()
+        self.ready = True
 
+    def on_loaded(self):
+        """
+        Plugin got loaded
+        """
+        logging.info("webgpsmap plugin loaded")
 
-def on_internet_available(agent):
-    """
-    Save the agent obj
-    """
-    global AGENT
-    AGENT = agent
-
-def on_webhook(response, path):
-    """
-    Returns a map with gps data
-    """
-    global ALREADY_SENT
-
-    if not AGENT:
-        response.send_response(500)
-        response.send_header('Content-type', 'text/html')
-        response.end_headers()
+    def on_webhook(self, path, request):
+        """
+        Returns ewquested data
+        """
+        # defaults:
+        response_header_contenttype = None
+        response_mimetype = "application/xhtml+xml"
+        if not self.ready:
+            try:
+                response_data = bytes('''<html>
+                    <head>
+                    <meta charset="utf-8"/>
+                    <style>body{font-size:1000%;}</style>
+                    </head>
+                    <body>Not ready yet</body>
+                    </html>''', "utf-8")
+                response_status = 500
+                response_mimetype = "application/xhtml+xml"
+                response_header_contenttype = 'text/html'
+            except Exception as ex:
+                logging.error(ex)
+                return
+        else:
+            if request.method == "GET":
+                if path == '/' or not path:
+                    # returns the html template
+                    self.ALREADY_SENT = list()
+                    try:
+                        response_data = bytes(self.get_html(), "utf-8")
+                    except Exception as ex:
+                        logging.error(ex)
+                        return
+                    response_status = 200
+                    response_mimetype = "application/xhtml+xml"
+                    response_header_contenttype = 'text/html'
+                elif path.startswith('all'):
+                    # returns all positions
+                    try:
+                        self.ALREADY_SENT = list()
+                        response_data = bytes(json.dumps(self.load_gps_from_dir(self.config['bettercap']['handshakes'])), "utf-8")
+                        response_status = 200
+                        response_mimetype = "application/json"
+                        response_header_contenttype = 'application/json'
+                    except Exception as ex:
+                        logging.error(ex)
+                        return
+                # elif path.startswith('/newest'):
+                #     # returns all positions newer then timestamp
+                #     response_data = bytes(json.dumps(self.load_gps_from_dir(self.config['bettercap']['handshakes']), newest_only=True), "utf-8")
+                #     response_status = 200
+                #     response_mimetype = "application/json"
+                #     response_header_contenttype = 'application/json'
+                else:
+                    # unknown GET path
+                    response_data = bytes('''<html>
+                    <head>
+                    <meta charset="utf-8"/>
+                    <style>body{font-size:1000%;}</style>
+                    </head>
+                    <body>4😋4</body>
+                    </html>''', "utf-8")
+                    response_status = 404
+            else:
+                # unknown request.method
+                response_data = bytes('''<html>
+                    <head>
+                    <meta charset="utf-8"/>
+                    <style>body{font-size:1000%;}</style>
+                    </head>
+                    <body>4😋4</body>
+                    </html>''', "utf-8")
+                response_status = 404
         try:
-            response.wfile.write(bytes('''<html>
-                <head>
-                <meta charset="utf-8">
-                <style>body{font-size:1000%;}</style>
-                </head>
-                <body>Not ready yet</body>
-                </html>''', "utf-8"))
+            r = Response(response=response_data, status=response_status, mimetype=response_mimetype)
+            if response_header_contenttype is not None:
+                r.headers["Content-Type"] = response_header_contenttype
+            return r
         except Exception as ex:
             logging.error(ex)
-        return
+            return
 
-    if path == '/' or not path:
-        # returns the html template
-        ALREADY_SENT = list()
-        res = get_html()
-        response.send_response(200)
-        response.send_header('Content-type', 'text/html')
-    elif path.startswith('/all'):
-        # returns all positions
-        ALREADY_SENT = list()
-        res = json.dumps(load_gps_from_dir(AGENT.config()['bettercap']['handshakes']))
-        response.send_response(200)
-        response.send_header('Content-type', 'application/json')
-    elif path.startswith('/newest'):
-        # returns all positions newer then timestamp
-        res = json.dumps(load_gps_from_dir(AGENT.config()['bettercap']['handshakes']), newest_only=True)
-        response.send_response(200)
-        response.send_header('Content-type', 'application/json')
-    else:
-        res = '''<html>
-        <head>
-        <meta charset="utf-8">
-        <style>body{font-size:1000%;}</style>
-        </head>
-        <body>4😋4</body>
-        </html>'''
-        response.send_response(404)
+    # cache 1024 items
+    @lru_cache(maxsize=1024, typed=False)
+    def _get_pos_from_file(self, path):
+        return PositionFile(path)
 
-    response.end_headers()
 
-    try:
-        response.wfile.write(bytes(res, "utf-8"))
-    except Exception as ex:
-        logging.error(ex)
+    def load_gps_from_dir(self, gpsdir, newest_only=False):
+        """
+        Parses the gps-data from disk
+        """
+
+        handshake_dir = gpsdir
+        gps_data = dict()
+
+        logging.info("webgpsmap: scanning %s", handshake_dir)
+
+
+        all_files = os.listdir(handshake_dir)
+        #print(all_files)
+        all_pcap_files = [os.path.join(handshake_dir, filename)
+                                for filename in all_files
+                                if filename.endswith('.pcap')
+                                ]
+        all_geo_or_gps_files = []
+        for filename_pcap in all_pcap_files:
+            filename_base = filename_pcap[:-5]  # remove ".pcap"
+            logging.debug("webgpsmap: found: " + filename_base)
+            filename_position = None
+
+            check_for = os.path.basename(filename_base) + ".gps.json"
+            if check_for in all_files:
+                filename_position = str(os.path.join(handshake_dir, check_for))
+
+            check_for = os.path.basename(filename_base) + ".geo.json"
+            if check_for in all_files:
+                filename_position = str(os.path.join(handshake_dir, check_for))
+
+            if filename_position is not None:
+    #            logging.debug("webgpsmap: -- found: %s %d" % (check_for, len(all_geo_or_gps_files)) )
+                all_geo_or_gps_files.append(filename_position)
+
+    #    all_geo_or_gps_files = set(all_geo_or_gps_files) - set(SKIP)   # remove skiped networks? No!
+
+        if newest_only:
+            all_geo_or_gps_files = set(all_geo_or_gps_files) - set(self.ALREADY_SENT)
+
+        logging.info("webgpsmap: Found %d .(geo|gps).json files from %d handshakes. Fetching positions ...",
+                     len(all_geo_or_gps_files), len(all_pcap_files))
+
+        for pos_file in all_geo_or_gps_files:
+            try:
+                pos = self._get_pos_from_file(pos_file)
+                if not pos.type() == PositionFile.GPS and not pos.type() == PositionFile.GEO:
+                    continue
+
+                ssid, mac = pos.ssid(), pos.mac()
+                ssid = "unknown" if not ssid else ssid
+                # invalid mac is strange and should abort; ssid is ok
+                if not mac:
+                    raise ValueError("Mac can't be parsed from filename")
+                gps_data[ssid+"_"+mac] = {
+                    'ssid': ssid,
+                    'mac': mac,
+                    'type': 'gps' if pos.type() == PositionFile.GPS else 'geo',
+                    'lng': pos.lng(),
+                    'lat': pos.lat(),
+                    'acc': pos.accuracy(),
+                    'ts_first': pos.timestamp_first(),
+                    'ts_last': pos.timestamp_last(),
+                    }
+
+                check_for = os.path.basename(pos_file[:-9]) + ".pcap.cracked"
+                if check_for in all_files:
+                    gps_data[ssid + "_" + mac]["pass"] = pos.password()
+
+                self.ALREADY_SENT += pos_file
+            except json.JSONDecodeError as js_e:
+                self.SKIP += pos_file
+                logging.error(js_e)
+                continue
+            except ValueError as v_e:
+                self.SKIP += pos_file
+                logging.error(v_e)
+                continue
+            except OSError as os_e:
+                self.SKIP += pos_file
+                logging.error(os_e)
+                continue
+        logging.info("webgpsmap loaded %d positions", len(gps_data))
+        return gps_data
+
+    def get_html(self):
+        """
+        Returns the html page
+        """
+        try:
+            template_file = os.path.dirname(os.path.realpath(__file__))+"/"+"webgpsmap.html"
+            html_data = open(template_file, "r").read()
+        except Exception as ex:
+            logging.error("error loading template file: %s", template_file)
+            logging.error(ex)
+        return html_data
 
 
 class PositionFile:
@@ -137,9 +257,6 @@ class PositionFile:
         parsed_mac = re.search(r'.*_?([a-zA-Z0-9]{12})\.(?:gps|geo)\.json', self._filename)
         if parsed_mac:
             mac = parsed_mac.groups()[0]
-            #mac_it = iter(mac)
-            #mac = ':'.join([a + b for a, b in zip(mac_it, mac_it)])
-            # do not make the data bigger
             return mac
         return None
 
@@ -182,7 +299,6 @@ class PositionFile:
             date_iso_formated = part1 + "." + part2 + "+" + part3
             dateObj = datetime.datetime.fromisoformat(date_iso_formated)
             return_ts = int("%.0f" % dateObj.timestamp())
-#            print(" ##### time from gps: Updated: " + self._filename)
         else:
             # use file timestamp last modification of the pcap file
             return_ts = int("%.0f" % os.path.getmtime(self._file))
@@ -194,21 +310,17 @@ class PositionFile:
         """
         return_pass = None
         password_file_path = self._file[:-9] + ".pcap.cracked"
-#        logging.info("password file: " + password_file_path)
         if os.path.isfile(password_file_path):
-#            logging.info("-password file exist: " + password_file_path)
             try:
                 password_file = open(password_file_path, 'r')
                 return_pass = password_file.read()
                 password_file.close()
-#                logging.info("--password: " + return_pass)
             except OSError as err:
                 print("OS error: {0}".format(err))
             except:
                 print("Unexpected error:", sys.exc_info()[0])
                 raise
         return return_pass
-
 
     def type(self):
         """
@@ -255,109 +367,3 @@ class PositionFile:
             except KeyError:
                 pass
         return None
-
-# cache 1024 items
-@lru_cache(maxsize=1024, typed=False)
-def _get_pos_from_file(path):
-    return PositionFile(path)
-
-
-def load_gps_from_dir(gpsdir, newest_only=False):
-    """
-    Parses the gps-data from disk
-    """
-    global ALREADY_SENT
-    global SKIP
-
-    handshake_dir = gpsdir
-    gps_data = dict()
-
-    logging.info("webmap: scanning %s" % handshake_dir)
-
-
-    all_files = os.listdir(handshake_dir)
-    #print(all_files)
-    all_pcap_files = [os.path.join(handshake_dir, filename)
-                            for filename in all_files
-                            if filename.endswith('.pcap')
-                            ]
-    all_geo_or_gps_files = []
-    for filename_pcap in all_pcap_files:
-        filename_base = filename_pcap[:-5]  # remove ".pcap"
-#        logging.info("webmap: found: " + filename_base)
-        filename_position = None
-
-        check_for = os.path.basename(filename_base) + ".gps.json"
-        if check_for in all_files:
-            filename_position = str(os.path.join(handshake_dir, check_for))
-
-        check_for = os.path.basename(filename_base) + ".geo.json"
-        if check_for in all_files:
-            filename_position = str(os.path.join(handshake_dir, check_for))
-
-        if filename_position is not None:
-#            logging.info("webmap: -- found: %s %d" % (check_for, len(all_geo_or_gps_files)) )
-            all_geo_or_gps_files.append(filename_position)
-
-
-
-#    all_geo_or_gps_files = set(all_geo_or_gps_files) - set(SKIP)   # remove skiped networks?
-
-    if newest_only:
-        all_geo_or_gps_files = set(all_geo_or_gps_files) - set(ALREADY_SENT)
-
-    logging.info("webgpsmap: Found %d .json files from %d handshakes. Fetching positions ...",
-                 len(all_geo_or_gps_files), len(all_pcap_files))
-
-    for pos_file in all_geo_or_gps_files:
-        try:
-            pos = _get_pos_from_file(pos_file)
-            if not pos.type() == PositionFile.GPS and not pos.type() == PositionFile.GEO:
-                continue
-
-            ssid, mac = pos.ssid(), pos.mac()
-            ssid = "unknown" if not ssid else ssid
-            # invalid mac is strange and should abort; ssid is ok
-            if not mac:
-                raise ValueError('Mac cant be parsed from filename')
-            gps_data[ssid+"_"+mac] = {
-                'ssid': ssid,
-                'mac': mac,
-                'type': 'gps' if pos.type() == PositionFile.GPS else 'geo',
-                'lng': pos.lng(),
-                'lat': pos.lat(),
-                'acc': pos.accuracy(),
-                'ts_first': pos.timestamp_first(),
-                'ts_last': pos.timestamp_last(),
-                }
-
-            check_for = os.path.basename(pos_file[:-9]) + ".pcap.cracked"
-#            print("check: ", check_for)
-            if check_for in all_files:
-                gps_data[ssid + "_" + mac]["pass"] = pos.password()
-#                print("data with pass: ", gps_data[ssid + "_" + mac])
-
-            ALREADY_SENT += pos_file
-        except json.JSONDecodeError as js_e:
-            SKIP += pos_file
-            logging.error(js_e)
-            continue
-        except ValueError as v_e:
-            SKIP += pos_file
-            logging.error(v_e)
-            continue
-        except OSError as os_e:
-            SKIP += pos_file
-            logging.error(os_e)
-            continue
-    logging.info("plugin webgpsmap loaded %d positions: ", len(gps_data))
-
-    return gps_data
-
-
-def get_html():
-    """
-    Returns the html page
-    """
-    html_data = open(os.path.dirname(os.path.realpath(__file__))+"/"+"webgpsmap.html", "r").read()
-    return html_data

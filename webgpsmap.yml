@@ -1,0 +1,4 @@
+main:
+    plugins:
+        webgpsmap:
+            enabled: true
