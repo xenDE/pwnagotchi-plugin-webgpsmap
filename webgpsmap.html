@@ -105,8 +105,7 @@
       xobj.send(null);
     }
     function escapeHtml(unsafe) {
-      return
-        String(unsafe)
+      return String(unsafe)
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
@@ -198,6 +197,7 @@
           if (positions[key].pass) {
               passInfo = '<br/><b>Pass:</b> '+escapeHtml(positions[key].pass);
           }
+          console.log(JSON.stringify(positions[key]))
           newMarker.bindPopup("<b>"+escapeHtml(positions[key].ssid)+"</b><br><nobr>MAC: "+escapeHtml(formatMacAddress(positions[key].mac))+"</nobr><br/>"+"<nobr>position type: "+escapeHtml(positions[key].type)+"</nobr><br/>"+"<nobr>position accuracy: "+escapeHtml(Math.round(positions[key].acc))+"</nobr>"+passInfo, { maxWidth: "auto" });
           markers.push(newMarker);
           marker_pos.push(new_marker_pos);
