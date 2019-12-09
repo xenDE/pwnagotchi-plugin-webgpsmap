@@ -3,4 +3,8 @@ a plugin for pwnagotchi that shows a openstreetmap with positions of ap-handshak
 
 http://[ip-of-your-pwnagpotchi]:8080/plugins/webgpsmap
 
-its alpha! - beta comming soon...
+since pwnagotchi 1.3 its part of the master tree:
+https://github.com/evilsocket/pwnagotchi/blob/master/pwnagotchi/plugins/default/webgpsmap.py
+
+
+this repo is only for testing new functions before commit to the master pwnagotchi tree
